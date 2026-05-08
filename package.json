@@ -1,0 +1,19 @@
+{
+  "name": "chatgpt-web-relay",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Local ChatGPT web relay using a browser extension and a real logged-in browser profile.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "relay:start": "node src/cli.js relay:start",
+    "relay:doctor": "node src/cli.js relay:doctor",
+    "relay:prompt": "node src/cli.js relay:prompt",
+    "relay:shortcut": "node src/cli.js relay:shortcut",
+    "test": "node --test"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Web Relay Worker",
+  "description": "Local-only worker that relays prompts to a logged-in ChatGPT tab.",
+  "version": "0.1.0",
+  "permissions": [],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.web-sandbox.oaiusercontent.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["shared.js", "content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.web-sandbox.oaiusercontent.com/*"],
+      "js": ["reportFrameShared.js", "reportFrame.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://chatgpt.com/*"]
+    }
+  ]
+}

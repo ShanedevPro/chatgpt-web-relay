@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { access, cp, mkdir, rm } from "node:fs/promises";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 
 const DEFAULT_PROFILE_NAME = "default";
@@ -18,6 +19,121 @@ async function pathExists(filePath) {
   } catch {
     return false;
   }
+}
+
+function uniqueStrings(values) {
+  return values.filter((value, index) => value && values.indexOf(value) === index);
+}
+
+function windowsUserName(env = process.env) {
+  return env.CHATGPT_RELAY_WINDOWS_USER ?? env.USERNAME ?? env.USER ?? os.userInfo().username;
+}
+
+function windowsLocalAppData(env = process.env, platform = process.platform) {
+  if (platform === "win32") {
+    return env.LOCALAPPDATA ?? path.win32.join(os.homedir(), "AppData", "Local");
+  }
+  return env.CHATGPT_RELAY_WINDOWS_LOCALAPPDATA ??
+    path.posix.join("/mnt/c/Users", windowsUserName(env), "AppData", "Local");
+}
+
+function windowsProgramFiles(env = process.env, platform = process.platform) {
+  if (platform === "win32") {
+    return {
+      programFiles: env.ProgramFiles ?? "C:\\Program Files",
+      programFilesX86: env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+    };
+  }
+  return {
+    programFiles: env.CHATGPT_RELAY_WINDOWS_PROGRAM_FILES ?? "/mnt/c/Program Files",
+    programFilesX86: env.CHATGPT_RELAY_WINDOWS_PROGRAM_FILES_X86 ?? "/mnt/c/Program Files (x86)",
+  };
+}
+
+function joinWindowsInstallPath(platform, ...parts) {
+  return platform === "win32" ? path.win32.join(...parts) : path.posix.join(...parts);
+}
+
+export function browserPathEnvVarName(browser) {
+  if (browser === "edge") {
+    return "CHATGPT_RELAY_WINDOWS_EDGE";
+  }
+  if (browser === "chrome") {
+    return "CHATGPT_RELAY_WINDOWS_CHROME";
+  }
+  throw new Error(`Unsupported extension browser: ${browser}`);
+}
+
+export function defaultBrowserCandidatePaths(browser, options = {}) {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const { programFiles, programFilesX86 } = windowsProgramFiles(env, platform);
+  const localAppData = windowsLocalAppData(env, platform);
+
+  if (browser === "edge") {
+    return uniqueStrings([
+      joinWindowsInstallPath(platform, programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
+      joinWindowsInstallPath(platform, programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+      joinWindowsInstallPath(platform, localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
+    ]);
+  }
+  if (browser === "chrome") {
+    return uniqueStrings([
+      joinWindowsInstallPath(platform, programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      joinWindowsInstallPath(platform, programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      joinWindowsInstallPath(platform, localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+    ]);
+  }
+  throw new Error(`Unsupported extension browser: ${browser}`);
+}
+
+function browserNotFoundMessage({ browser, envVarName, checkedPaths }) {
+  return [
+    `Could not find Windows ${browser === "edge" ? "Edge" : "Chrome"}.`,
+    `Install ${browser === "edge" ? "Microsoft Edge" : "Google Chrome"} or set ${envVarName} to the browser executable path.`,
+    `Checked: ${checkedPaths.join("; ")}`,
+  ].join(" ");
+}
+
+export async function resolveBrowserPath(options = {}) {
+  const browser = options.browser ?? DEFAULT_EXTENSION_BROWSER;
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const pathExistsFn = options.pathExistsFn ?? pathExists;
+  const envVarName = browserPathEnvVarName(browser);
+  const envOverride = env[envVarName];
+  const checkedPaths = uniqueStrings(
+    envOverride
+      ? [envOverride]
+      : [
+          options.configuredPath,
+          ...defaultBrowserCandidatePaths(browser, { env, platform }),
+        ],
+  );
+
+  for (const candidate of checkedPaths) {
+    if (await pathExistsFn(candidate)) {
+      return {
+        browser,
+        status: "found",
+        source: envOverride && candidate === envOverride ? "env" : "auto",
+        path: candidate,
+        envVarName,
+        checkedPaths: checkedPaths.slice(0, checkedPaths.indexOf(candidate) + 1),
+        message: null,
+      };
+    }
+  }
+
+  return {
+    browser,
+    status: "not_found",
+    source: envOverride ? "env" : "auto",
+    path: null,
+    envVarName,
+    checkedPaths,
+    message: browserNotFoundMessage({ browser, envVarName, checkedPaths }),
+  };
 }
 
 function localRelayRootFromProfilesDir(windowsBrowserProfilesDir) {
@@ -76,6 +192,9 @@ export function planChatGptTabNormalization(targets, chatgptUrl) {
 }
 
 export function classifyExtensionDoctorStatus(report = {}) {
+  if (report.browserDiscoveryStatus === "not_found" || report.browserPathExists === false) {
+    return "browser_not_found";
+  }
   if (!report.serverReachable) {
     return "server_down";
   }
@@ -179,6 +298,19 @@ function extensionBrowserPath(config, browser) {
     return config.windowsChromePath;
   }
   throw new Error(`Unsupported extension browser: ${browser}`);
+}
+
+export async function resolveExtensionBrowser(config, options = {}) {
+  const defaults = relayExtensionDefaults(config);
+  const browser = options.browser ?? defaults.browser;
+  const configuredPath = options.browserPath ?? extensionBrowserPath(config, browser);
+  return resolveBrowserPath({
+    browser,
+    configuredPath,
+    env: options.env,
+    platform: options.platform,
+    pathExistsFn: options.pathExistsFn,
+  });
 }
 
 function windowsExecutableName(executablePath) {
@@ -354,9 +486,13 @@ export async function extensionDoctorReport(config, options = {}) {
   const profileDir = options.profileDir ?? defaults.profileDir;
   const extensionInstallDir = options.extensionInstallDir ?? defaults.extensionInstallDir;
   const cdpPort = options.cdpPort ?? defaults.cdpPort;
-  const browserPath = options.browserPath ?? extensionBrowserPath(config, defaults.browser);
-  const browserPathForWindows = await maybeWindowsPath(browserPath);
-  const executableName = windowsExecutableName(browserPathForWindows);
+  const browserDiscovery = await resolveExtensionBrowser(config, {
+    browser: defaults.browser,
+    browserPath: options.browserPath,
+  });
+  const browserPath = browserDiscovery.path ?? browserDiscovery.checkedPaths[0] ?? "";
+  const browserPathForWindows = browserPath ? await maybeWindowsPath(browserPath) : "";
+  const executableName = browserPathForWindows ? windowsExecutableName(browserPathForWindows) : "";
   const profileDirForChrome = await maybeWindowsPath(profileDir);
   const extensionDirForChrome = await maybeWindowsPath(extensionInstallDir);
 
@@ -370,9 +506,11 @@ export async function extensionDoctorReport(config, options = {}) {
   }
 
   const [chromeRunning, extensionPathExists, targets] = await Promise.all([
-    isWindowsBrowserProfileRunning(executableName, profileDirForChrome),
+    browserDiscovery.status === "found"
+      ? isWindowsBrowserProfileRunning(executableName, profileDirForChrome)
+      : false,
     pathExists(extensionInstallDir),
-    readWindowsCdpTargets(cdpPort),
+    browserDiscovery.status === "found" ? readWindowsCdpTargets(cdpPort) : [],
   ]);
   const chatgptTabFound = targets.some((target) => String(target.url ?? "").startsWith(config.chatgptUrl));
   const chatgptTargets = targets.filter((target) => String(target.url ?? "").startsWith(config.chatgptUrl));
@@ -406,6 +544,12 @@ export async function extensionDoctorReport(config, options = {}) {
     contentScriptProbeResults,
     workers,
     browser: defaults.browser,
+    browserPath: browserDiscovery.path,
+    browserPathExists: browserDiscovery.status === "found",
+    browserDiscoveryStatus: browserDiscovery.status,
+    browserPathEnvVar: browserDiscovery.envVarName,
+    checkedBrowserPaths: browserDiscovery.checkedPaths,
+    browserDiscoveryMessage: browserDiscovery.message,
     profileName: defaults.profileName,
     profileDir,
     extensionInstallDir,
@@ -422,12 +566,42 @@ export async function launchRelayExtension(config, options = {}) {
   const extensionSourceDir = options.extensionSourceDir ?? defaults.extensionSourceDir;
   const extensionInstallDir = options.extensionInstallDir ?? defaults.extensionInstallDir;
   const cdpPort = options.cdpPort ?? defaults.cdpPort;
-  const browserPath = options.browserPath ?? extensionBrowserPath(config, defaults.browser);
   const workerTimeoutMs = options.workerTimeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS;
+  const browserDiscovery = await resolveExtensionBrowser(config, {
+    browser: defaults.browser,
+    browserPath: options.browserPath,
+  });
+
+  if (browserDiscovery.status !== "found") {
+    return {
+      status: "browser_not_found",
+      serverReachable: false,
+      chromeRunning: false,
+      extensionPathExists: await pathExists(extensionInstallDir),
+      chatgptTabFound: false,
+      contentScriptLoaded: false,
+      contentScriptLoadedFromPage: null,
+      contentScriptProbeResults: [],
+      workers: [],
+      browser: defaults.browser,
+      browserPath: null,
+      browserPathExists: false,
+      browserDiscoveryStatus: browserDiscovery.status,
+      browserPathEnvVar: browserDiscovery.envVarName,
+      checkedBrowserPaths: browserDiscovery.checkedPaths,
+      browserDiscoveryMessage: browserDiscovery.message,
+      profileName: defaults.profileName,
+      profileDir,
+      extensionInstallDir,
+      cdpPort,
+      targetCount: 0,
+      launchArgs: [],
+    };
+  }
 
   const profileDirForChrome = await maybeWindowsPath(profileDir);
   const extensionDirForChrome = await maybeWindowsPath(extensionInstallDir);
-  const browserPathForWindows = await maybeWindowsPath(browserPath);
+  const browserPathForWindows = await maybeWindowsPath(browserDiscovery.path);
   const executableName = windowsExecutableName(browserPathForWindows);
 
   await stopWindowsBrowserProfile(executableName, profileDirForChrome);

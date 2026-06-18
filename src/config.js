@@ -35,6 +35,20 @@ function defaultWindowsBrowserProfilesDir() {
   );
 }
 
+function defaultWindowsBrowserPath(browser) {
+  if (process.platform === "win32") {
+    if (browser === "edge") {
+      return "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+    }
+    return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+  }
+
+  if (browser === "edge") {
+    return "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+  }
+  return "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe";
+}
+
 function readIntegerEnv(name, fallback) {
   const raw = process.env[name];
   if (!raw) {
@@ -98,11 +112,11 @@ export function createConfig(overrides = {}) {
     windowsChromePath:
       overrides.windowsChromePath ??
       process.env.CHATGPT_RELAY_WINDOWS_CHROME ??
-      "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
+      defaultWindowsBrowserPath("chrome"),
     windowsEdgePath:
       overrides.windowsEdgePath ??
       process.env.CHATGPT_RELAY_WINDOWS_EDGE ??
-      "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+      defaultWindowsBrowserPath("edge"),
     port: overrides.port ?? readIntegerEnv("CHATGPT_RELAY_PORT", 8787),
     responseTimeoutMs:
       overrides.responseTimeoutMs ?? readIntegerEnv("CHATGPT_RELAY_RESPONSE_TIMEOUT_MS", 180000),

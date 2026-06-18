@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { parseArgs } from "../src/cli.js";
 
@@ -59,4 +61,21 @@ test("parseArgs reads relay launch options", () => {
     cdpPort: 9223,
   });
   assert.deepEqual(positional, []);
+});
+
+test("relay:start reports browser_not_found before starting the relay", () => {
+  const run = spawnSync(process.execPath, ["src/cli.js", "relay:start", "--port", "8787"], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    env: {
+      ...process.env,
+      CHATGPT_RELAY_WINDOWS_EDGE: "/definitely/missing/msedge.exe",
+      CHATGPT_RELAY_WINDOWS_CHROME: "/definitely/missing/chrome.exe",
+    },
+    encoding: "utf8",
+  });
+
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /browser_not_found/);
+  assert.match(run.stdout, /CHATGPT_RELAY_WINDOWS_EDGE/);
+  assert.match(run.stderr, /Could not find Windows Edge/);
 });

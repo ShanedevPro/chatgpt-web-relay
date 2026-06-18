@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   buildChromeExtensionLaunchArgs,
   classifyExtensionDoctorStatus,
+  defaultBrowserCandidatePaths,
   planChatGptTabNormalization,
   relayExtensionDefaults,
+  resolveBrowserPath,
 } from "../src/extensionLauncher.js";
 import { SUPPORTED_CONTENT_VERSION } from "../src/extensionBroker.js";
 
@@ -67,6 +69,82 @@ test("buildChromeExtensionLaunchArgs includes extension flags and avoids session
   assert.equal(args.some((arg) => arg.includes("restore-last-session")), false);
 });
 
+test("defaultBrowserCandidatePaths includes system and user installs", () => {
+  const edgeCandidates = defaultBrowserCandidatePaths("edge", {
+    platform: "win32",
+    env: {
+      ProgramFiles: "C:\\Program Files",
+      "ProgramFiles(x86)": "C:\\Program Files (x86)",
+      LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local",
+    },
+  });
+  const chromeCandidates = defaultBrowserCandidatePaths("chrome", {
+    platform: "win32",
+    env: {
+      ProgramFiles: "C:\\Program Files",
+      "ProgramFiles(x86)": "C:\\Program Files (x86)",
+      LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local",
+    },
+  });
+
+  assert.deepEqual(edgeCandidates, [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Users\\Ada\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe",
+  ]);
+  assert.deepEqual(chromeCandidates, [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Users\\Ada\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+  ]);
+});
+
+test("resolveBrowserPath gives environment overrides highest priority", async () => {
+  const result = await resolveBrowserPath({
+    browser: "chrome",
+    configuredPath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    platform: "win32",
+    env: {
+      CHATGPT_RELAY_WINDOWS_CHROME: "D:\\Portable\\Chrome\\chrome.exe",
+      ProgramFiles: "C:\\Program Files",
+      "ProgramFiles(x86)": "C:\\Program Files (x86)",
+      LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local",
+    },
+    pathExistsFn: async (candidate) =>
+      candidate === "D:\\Portable\\Chrome\\chrome.exe" ||
+      candidate === "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  });
+
+  assert.equal(result.status, "found");
+  assert.equal(result.source, "env");
+  assert.equal(result.path, "D:\\Portable\\Chrome\\chrome.exe");
+  assert.deepEqual(result.checkedPaths, ["D:\\Portable\\Chrome\\chrome.exe"]);
+});
+
+test("resolveBrowserPath reports checked paths and env override guidance", async () => {
+  const result = await resolveBrowserPath({
+    browser: "edge",
+    configuredPath: "C:\\Missing\\msedge.exe",
+    platform: "win32",
+    env: {
+      ProgramFiles: "C:\\Program Files",
+      "ProgramFiles(x86)": "C:\\Program Files (x86)",
+      LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local",
+    },
+    pathExistsFn: async () => false,
+  });
+
+  assert.equal(result.status, "not_found");
+  assert.equal(result.envVarName, "CHATGPT_RELAY_WINDOWS_EDGE");
+  assert.match(result.message, /CHATGPT_RELAY_WINDOWS_EDGE/);
+  assert.deepEqual(result.checkedPaths, [
+    "C:\\Missing\\msedge.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Users\\Ada\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe",
+  ]);
+});
+
 test("planChatGptTabNormalization plans existing ChatGPT tabs and a fresh one", () => {
   assert.deepEqual(
     planChatGptTabNormalization(
@@ -85,6 +163,14 @@ test("planChatGptTabNormalization plans existing ChatGPT tabs and a fresh one", 
 });
 
 test("classifyExtensionDoctorStatus distinguishes common startup failures", () => {
+  assert.equal(
+    classifyExtensionDoctorStatus({
+      browserDiscoveryStatus: "not_found",
+      browserPathExists: false,
+      serverReachable: false,
+    }),
+    "browser_not_found",
+  );
   assert.equal(classifyExtensionDoctorStatus({ serverReachable: false }), "server_down");
   assert.equal(
     classifyExtensionDoctorStatus({

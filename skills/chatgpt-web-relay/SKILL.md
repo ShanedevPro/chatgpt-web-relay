@@ -7,7 +7,7 @@ description: "Use when the user wants to generate images, run Deep Research repo
 
 Use this skill to give the agent ChatGPT web-page capabilities through the local ChatGPT Web Relay.
 
-Before each relay task, make a cheap readiness check. Reuse an existing repo, installed dependencies, running relay server, browser profile, and logged-in session when they are healthy. Only clone, install, start, or ask for login when needed.
+Before each relay task, make a cheap readiness check. Reuse an existing repo, installed dependencies, running relay server, browser profile, and logged-in session when they are healthy. Also run browser discovery first so the agent can see whether Edge or Chrome is installed. Only clone, install, start, or ask for login when needed.
 
 Typical user requests:
 
@@ -82,6 +82,8 @@ If status is `chatgpt_logged_out`, tell the user to log in in the opened browser
 
 If status is `chatgpt_verification_required`, tell the user to complete the visible human verification.
 
+If status is `browser_not_found`, tell the user to install Edge or Chrome, or set `CHATGPT_RELAY_WINDOWS_EDGE` / `CHATGPT_RELAY_WINDOWS_CHROME`.
+
 If status is `extension_not_loaded` or `extension_outdated`, rerun `npm run relay:start -- --port 8787`.
 
 ## Map User Intent To Job Mode
@@ -148,3 +150,7 @@ npm test
 ```
 
 For release readiness, also confirm the repository does not contain `.local`, `node_modules`, browser profiles, logs, results, or real secrets.
+
+## Browser Discovery
+
+If the relay is being used on a Windows laptop with an unusual browser install location, check `relay:doctor` first. The launcher will search common system and user install locations before falling back to `CHATGPT_RELAY_WINDOWS_EDGE` or `CHATGPT_RELAY_WINDOWS_CHROME`.

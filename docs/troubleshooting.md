@@ -38,6 +38,21 @@ Start the relay:
 npm run relay:start -- --port 8787
 ```
 
+## `browser_not_found`
+
+The relay could not find Edge or Chrome in common install locations. Install one of them, or set:
+
+```bash
+CHATGPT_RELAY_WINDOWS_EDGE
+CHATGPT_RELAY_WINDOWS_CHROME
+```
+
+Then run:
+
+```bash
+npm run relay:doctor -- --port 8787
+```
+
 ## Deep Research Does Not Start
 
 Check that your ChatGPT account can use Deep Research in the real website. If the visible UI changes, selector updates may be needed.

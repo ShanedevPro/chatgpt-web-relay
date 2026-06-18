@@ -56,7 +56,14 @@ Chrome is also supported:
 npm run relay:start -- --browser chrome
 ```
 
-The launcher uses startup flags to load the unpacked extension. You do not need Chrome policy or a packed CRX for local development.
+The launcher automatically searches common Edge and Chrome install locations. You do not need Chrome policy or a packed CRX for local development.
+
+If your browser is installed somewhere unusual, set one of these environment variables before starting:
+
+```bash
+export CHATGPT_RELAY_WINDOWS_EDGE="/mnt/c/Path/To/msedge.exe"
+export CHATGPT_RELAY_WINDOWS_CHROME="/mnt/c/Path/To/chrome.exe"
+```
 
 ## Desktop Shortcut
 

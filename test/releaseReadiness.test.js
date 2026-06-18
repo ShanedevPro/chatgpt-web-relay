@@ -79,6 +79,8 @@ test("README points agents to the universal relay skill", async () => {
   assert.doesNotMatch(readme, /<owner>/);
   assert.match(readme, /git clone https:\/\/github\.com\/ShanedevPro\/chatgpt-web-relay\.git/);
   assert.match(readme, /Install As An Agent Skill/);
+  assert.match(readme, /Browser Path Discovery/);
+  assert.match(readme, /CHATGPT_RELAY_WINDOWS_EDGE/);
   assert.match(readme, /generate an image/);
   assert.match(readme, /Deep Research report/);
   assert.match(readme, /npm ci/);
@@ -89,6 +91,8 @@ test("README points agents to the universal relay skill", async () => {
   assert.match(chineseReadme, /npm run relay:start -- --port 8787/);
   assert.match(chineseReadme, /skills\/chatgpt-web-relay\/SKILL\.md/);
   assert.match(chineseReadme, /作为 Agent Skill 安装/);
+  assert.match(chineseReadme, /浏览器路径自动发现/);
+  assert.match(chineseReadme, /CHATGPT_RELAY_WINDOWS_EDGE/);
   assert.match(chineseReadme, /生成图片/);
   assert.match(chineseReadme, /Deep Research 报告/);
 });
@@ -114,6 +118,10 @@ test("universal relay skill covers capability use, bootstrap, readiness, modes, 
   assert.match(skill, /npm run relay:start -- --port 8787/);
   assert.match(skill, /npm run relay:doctor -- --port 8787/);
   assert.match(skill, /worker_ready/);
+  assert.match(skill, /browser discovery/);
+  assert.match(skill, /browser_not_found/);
+  assert.match(skill, /CHATGPT_RELAY_WINDOWS_EDGE/);
+  assert.match(skill, /CHATGPT_RELAY_WINDOWS_CHROME/);
   assert.match(skill, /chatgpt_logged_out/);
   assert.match(skill, /chatgpt_verification_required/);
   assert.match(skill, /normal/);

@@ -7,7 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createConfig } from "./config.js";
-import { extensionDoctorReport, launchRelayExtension } from "./extensionLauncher.js";
+import {
+  extensionDoctorReport,
+  launchRelayExtension,
+  resolveExtensionBrowser,
+} from "./extensionLauncher.js";
 import { startServer } from "./server.js";
 
 function usage() {
@@ -110,6 +114,30 @@ async function extensionServerReachable(config) {
 async function runRelayStart(args) {
   const { options } = parseArgs(args);
   const config = configFromOptions(options);
+  const browserDiscovery = await resolveExtensionBrowser(config);
+
+  if (browserDiscovery.status !== "found") {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: "browser_not_found",
+          browser: browserDiscovery.browser,
+          browserPath: null,
+          browserPathExists: false,
+          browserDiscoveryStatus: browserDiscovery.status,
+          browserPathEnvVar: browserDiscovery.envVarName,
+          checkedBrowserPaths: browserDiscovery.checkedPaths,
+          browserDiscoveryMessage: browserDiscovery.message,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    process.stderr.write(`${browserDiscovery.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
   const serverAlreadyRunning = await extensionServerReachable(config);
   let serverHandle = null;
 
